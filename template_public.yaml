@@ -1,0 +1,161 @@
+apiVersion: kops/v1alpha2
+kind: Cluster
+metadata:
+  name: {{.cluster_name.value}}
+spec:
+  additionalPolicies:
+    master: |
+      [
+        {
+          "Effect": "Allow",
+          "Action": ["route53:ListHostedZonesByName"],
+          "Resource": ["*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["elasticloadbalancing:DescribeLoadBalancers"],
+          "Resource": ["*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["route53:ChangeResourceRecordSets"],
+          "Resource": ["*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["iam:ListServerCertificates"],
+          "Resource": ["*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "route53:ListHostedZones",
+            "route53:ListResourceRecordSets"
+          ],
+          "Resource": [
+            "*"
+          ]
+        }
+      ]
+  api:
+    dns: {}  
+  authorization:
+    rbac: {}
+  channel: stable
+  cloudProvider: aws
+  configBase: s3://{{.cluster_name.value}}/{{.cluster_name.value}}
+  dnsZone: {{.cluster_name.value}}
+  docker:
+    logDriver: json-file
+    logLevel: warn
+    logOpt:
+    - max-size=100m
+    - max-file=3
+    storage: overlay2  
+  etcdClusters:  
+  - etcdMembers:
+  {{range $i, $az := .availability_zones.value}}
+    - instanceGroup: master-{{.}}
+      name: {{. | replace $.region.value "" }}
+  {{end}}    
+    name: main  
+  - etcdMembers:
+  {{range $i, $az := .availability_zones.value}}
+    - instanceGroup: master-{{.}}
+      name: {{. | replace $.region.value "" }}
+  {{end}}    
+    name: events  
+  iam:
+    allowContainerRegistry: true
+    legacy: false
+  kubeAPIServer:    
+    kubeletPreferredAddressTypes:
+    - InternalIP
+    runtimeConfig:
+      autoscaling/v2beta1: "true"
+  kubeControllerManager:
+    horizontalPodAutoscalerUseRestClients: true
+  kubeDNS:
+    provider: CoreDNS
+  kubernetesApiAccess:
+  {{range $i, $id := .api_a.value}}
+  - {{.}}    
+  {{end}}
+  kubernetesVersion: {{.kub_ver.value}}
+  masterPublicName: api.{{.cluster_name.value}}
+  masterInternalName: api.internal.{{.cluster_name.value}}
+  networkCIDR: {{.vpc_cidr_block.value}}
+  networkID: {{.vpc_id.value}}    
+  kubelet:
+    anonymousAuth: false
+    authenticationTokenWebhook: true
+    authorizationMode: Webhook
+  networking:
+    {{.network_p.value}}: {}
+  nonMasqueradeCIDR: 100.64.0.0/10
+  sshAccess:
+  {{range $i, $id := .ssh_a.value}}
+  - {{.}}    
+  {{end}} 
+  subnets:
+  {{range $i, $id := .subnets_ids.value}}
+  - id: {{.}}
+    name: {{index $.availability_zones.value $i}}
+    type: Public
+    zone: {{index $.availability_zones.value $i}}
+  {{end}} 
+  topology:
+    dns:
+      type: Public
+    masters: public
+    nodes: public
+---
+
+# Create one master per AZ
+{{range $i, $id := .availability_zones.value}}
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+  labels:
+    kops.k8s.io/cluster: {{$.cluster_name.value}}
+  name: master-{{.}}
+spec:  
+  image: kope.io/k8s-1.14-debian-stretch-amd64-hvm-ebs-2019-08-16
+  machineType: {{$.master_size.value}}
+  maxSize: 1
+  minSize: 1
+  role: Master
+  nodeLabels:
+    kops.k8s.io/instancegroup: master-{{.}}
+  subnets:
+  - {{.}}   
+---
+  {{end}}
+
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+  labels:
+    kops.k8s.io/cluster: {{.cluster_name.value}}
+  name: nodes
+spec:  
+  image: kope.io/k8s-1.14-debian-stretch-amd64-hvm-ebs-2019-08-16
+  machineType: {{$.node_size.value}}
+  maxSize: {{$.node_q.value}}
+  minSize: {{$.node_q.value}}
+  mixedInstancesPolicy:
+    instances:    
+    - c5d.large
+    - c5.large
+    - c4.large
+    - c3.large
+    - c4.xlarge
+    onDemandAboveBase: 0
+    spotInstancePools: 2
+  role: Node
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes
+  subnets:
+  {{range .availability_zones.value}}
+  - {{.}}  
+  {{end}}
