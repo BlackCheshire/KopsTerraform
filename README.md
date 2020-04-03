@@ -6,4 +6,6 @@
 <br>4. Kops last ver.</br>
 <br>5. Nix* based OS</br>
 <hr>
-# 1 шаг
+<br>1. /backend/route53.tf в поле "parent" zone_id прописать id заранее созданой DNS зоны</br>
+<br>2. Заполнить /input.in нужными значениями</br>
+<br>3. Запустить создание кластера через скрипт /create_cluster.sh</br>
