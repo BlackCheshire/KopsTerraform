@@ -5,4 +5,4 @@ Recuriments:
 3.AWS Cli last ver.
 4.Kops last ver.
 5.Nix* based OS
----
+
